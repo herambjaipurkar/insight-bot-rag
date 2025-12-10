@@ -1,36 +1,25 @@
 import streamlit as st
 from pypdf import PdfReader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-import os
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
-from dotenv import load_dotenv
+import os
 
-# Page configuration
+# PAGE CONFIG
 st.set_page_config(page_title="InsightBot with Gemini", layout="wide")
 
-# Header
-st.title("🤖 InsightBot: Chat with PDFs using Google Gemini")
-st.markdown("Upload a PDF document and ask questions based on its content. Powered by Google's **free Gemini API**.")
+# HEADER
+st.title("🤖 InsightBot: Chat with PDFs")
+st.markdown("Powered by Google's **free Gemini API**.")
 
-# Sidebar for API Key and Instructions
+# SIDEBAR
 with st.sidebar:
-    st.title("⚙️ Configuration")
-    api_key = st.text_input("AIzaSyAoM7icEMfbDNwSn0K-Ryvjf1FvA48769M", type="password")
-    st.markdown("""
-    **How to get a free API Key:**
-    1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey).
-    2. Create a key.
-    3. Paste it above.
-    """)
-    st.divider()
-    st.markdown("Built with [Streamlit](https://streamlit.io) and [LangChain](https://python.langchain.com/).")
+    st.header("⚙️ Configuration")
+    api_key = st.text_input("Enter Google Gemini API Key:", type="password")
+    st.markdown("[Get Free Key](https://aistudio.google.com/app/apikey)")
 
-# Helper Functions
+# FUNCTIONS
 def get_pdf_text(pdf_docs):
     text = ""
     for pdf in pdf_docs:
@@ -39,62 +28,66 @@ def get_pdf_text(pdf_docs):
             text += page.extract_text()
     return text
 
-def get_text_chunks(text):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
-    chunks = text_splitter.split_text(text)
-    return chunks
-
 def get_vector_store(text_chunks, api_key):
-    # Using Google's embedding model
+    # Create embeddings
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
     return vector_store
 
-def get_conversational_chain(api_key):
-    # Define the prompt template
-    prompt_template = """
-    Answer the question as detailed as possible from the provided context, make sure to provide all the details. If the answer is not in
-    the provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
-    Context:\n {context}?\n
-    Question: \n{question}\n
+def get_response(user_question, api_key):
+    # 1. Load the database
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+
+    # 2. Find relevant docs
+    docs = new_db.similarity_search(user_question)
+
+    # 3. Create the prompt manually (Avoids 'Chain' errors)
+    context_text = "\n\n".join([doc.page_content for doc in docs])
+    prompt = f"""
+    You are a helpful AI assistant. Answer the question based ONLY on the provided context below.
+
+    Context:
+    {context_text}
+
+    Question: 
+    {user_question}
 
     Answer:
     """
-    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3, google_api_key=api_key)
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
-    return chain
 
-def user_input(user_question, api_key):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    docs = new_db.similarity_search(user_question)
-    chain = get_conversational_chain(api_key)
-    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-    st.write("Reply: ", response["output_text"])
+    # 4. Ask Gemini
+    model = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
+    response = model.invoke(prompt)
+    return response.content
 
-# Main App Logic
+# MAIN APP
 if api_key:
-    # File Uploader
-    pdf_docs = st.file_uploader("Upload your PDF Files and Click 'Process'", accept_multiple_files=True, type=['pdf'])
+    pdf_docs = st.file_uploader("1. Upload PDF & Click Process", accept_multiple_files=True, type=['pdf'])
 
-    if st.button("Process PDFs"):
-        with st.spinner("Processing... This may take a moment."):
-            if pdf_docs:
+    if st.button("Process PDF"):
+        if pdf_docs:
+            with st.spinner("Analyzing..."):
                 raw_text = get_pdf_text(pdf_docs)
-                text_chunks = get_text_chunks(raw_text)
-                get_vector_store(text_chunks, api_key)
-                st.success("Done! You can now ask questions.")
-            else:
-                st.warning("Please upload a PDF file first.")
+                # Simple splitting
+                text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
+                chunks = text_splitter.split_text(raw_text)
 
-    # Chat Interface
-    user_question = st.text_input("Ask a Question from the PDF Files")
+                get_vector_store(chunks, api_key)
+                st.success("Done! PDF Processed.")
+        else:
+            st.warning("Please upload a file.")
+
+    user_question = st.text_input("2. Ask a question about the PDF:")
+
     if user_question:
         try:
-            user_input(user_question, api_key)
+            with st.spinner("Thinking..."):
+                answer = get_response(user_question, api_key)
+                st.write("### Reply:")
+                st.write(answer)
         except Exception as e:
-            st.error(f"Error: {str(e)}. Please ensure you have processed the PDF first.")
+            st.error(f"Error: {e}. Did you process the PDF first?")
 else:
-    st.warning("👈 Please enter your Google Gemini API Key in the sidebar to start.")
+    st.warning("Enter your API Key in the sidebar to start.")
