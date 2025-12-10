@@ -62,7 +62,7 @@ def get_response(user_question, api_key):
     """
     
     # UPDATED: Changed 'gemini-pro' to 'gemini-1.5-flash'
-    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
+    model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
     response = model.invoke(prompt)
     return response.content
 
