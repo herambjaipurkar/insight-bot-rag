@@ -1,6 +1,6 @@
 import streamlit as st
 from pypdf import PdfReader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -43,7 +43,7 @@ def get_response(user_question, api_key):
     # 2. Find relevant docs
     docs = new_db.similarity_search(user_question)
 
-    # 3. Create the prompt manually (Avoids 'Chain' errors)
+    # 3. Create the prompt manually
     context_text = "\n\n".join([doc.page_content for doc in docs])
     prompt = f"""
     You are a helpful AI assistant. Answer the question based ONLY on the provided context below.
