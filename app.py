@@ -1,6 +1,6 @@
 import streamlit as st
 from pypdf import PdfReader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import google.generativeai as genai
@@ -81,14 +81,20 @@ if api_key:
 
     if st.button("Process PDFs"):
         with st.spinner("Processing... This may take a moment."):
-            raw_text = get_pdf_text(pdf_docs)
-            text_chunks = get_text_chunks(raw_text)
-            get_vector_store(text_chunks, api_key)
-            st.success("Done! You can now ask questions.")
+            if pdf_docs:
+                raw_text = get_pdf_text(pdf_docs)
+                text_chunks = get_text_chunks(raw_text)
+                get_vector_store(text_chunks, api_key)
+                st.success("Done! You can now ask questions.")
+            else:
+                st.warning("Please upload a PDF file first.")
 
     # Chat Interface
     user_question = st.text_input("Ask a Question from the PDF Files")
     if user_question:
-        user_input(user_question, api_key)
+        try:
+            user_input(user_question, api_key)
+        except Exception as e:
+            st.error(f"Error: {str(e)}. Please ensure you have processed the PDF first.")
 else:
     st.warning("👈 Please enter your Google Gemini API Key in the sidebar to start.")
