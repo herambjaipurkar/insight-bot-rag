@@ -18,7 +18,6 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     api_key = st.text_input("Enter Google Gemini API Key:", type="password")
     st.markdown("[Get Free Key](https://aistudio.google.com/app/apikey)")
-    st.warning("⚠️ If you get an error, generate a NEW key and make sure you copy it completely.")
 
 # FUNCTIONS
 def get_pdf_text(pdf_docs):
@@ -26,7 +25,6 @@ def get_pdf_text(pdf_docs):
     for pdf in pdf_docs:
         pdf_reader = PdfReader(pdf)
         for page in pdf_reader.pages:
-            # Add a safety check for empty pages
             page_text = page.extract_text()
             if page_text:
                 text += page_text
@@ -34,18 +32,17 @@ def get_pdf_text(pdf_docs):
 
 def get_vector_store(text_chunks, api_key):
     try:
-        # UPDATED: Using the newer, more stable embedding model
+        # Using the modern embedding model
         embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
         vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
         vector_store.save_local("faiss_index")
         return vector_store
     except Exception as e:
-        # This will print the ACTUAL error to the screen so we can fix it
-        st.error(f"Error connecting to Google API: {e}")
+        st.error(f"Error creating embeddings: {e}")
         st.stop()
 
 def get_response(user_question, api_key):
-    # UPDATED: Using the newer embedding model here too
+    # Load the database
     embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=api_key)
     new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     
@@ -64,7 +61,8 @@ def get_response(user_question, api_key):
     Answer:
     """
     
-    model = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
+    # UPDATED: Changed 'gemini-pro' to 'gemini-1.5-flash'
+    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
     response = model.invoke(prompt)
     return response.content
 
@@ -79,7 +77,6 @@ if api_key:
                 if not raw_text:
                     st.error("Could not read text from PDF. It might be an image scan.")
                 else:
-                    # Creating chunks
                     text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
                     chunks = text_splitter.split_text(raw_text)
                     
@@ -87,7 +84,7 @@ if api_key:
                         get_vector_store(chunks, api_key)
                         st.success("Done! PDF Processed.")
                     else:
-                        st.error("PDF was empty or could not be split.")
+                        st.error("PDF was empty.")
         else:
             st.warning("Please upload a file.")
 
